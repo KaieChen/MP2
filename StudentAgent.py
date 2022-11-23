@@ -359,30 +359,30 @@ class NodeMCTS:
             return 0
         return self.value_sum / self.visit_count
 
-    #         def select_action(self, temperature):
-    #             """
-    #             Select action according to the visit count distribution and the temperature.
-    #             """
-    #             visit_counts = np.array([child.visit_count for child in self.children.values()])
-    #             actions = [action for action in self.children.keys()]
-    #             if temperature == 0:
-    #                 action = actions[np.argmax(visit_counts)]
-    #             elif temperature == float("inf"):
-    #                 action = np.random.choice(actions)
-    #             else:
-    #                 # See paper appendix Data Generation
-    #                 visit_count_distribution = visit_counts ** (1 / temperature)
-    #                 visit_count_distribution = visit_count_distribution / sum(visit_count_distribution)
-    #                 action = np.random.choice(actions, p=visit_count_distribution)
+    def select_action(self, temperature):
+        """
+        Select action according to the visit count distribution and the temperature.
+        """
+        visit_counts = np.array([child.visit_count for child in self.children.values()])
+        actions = [action for action in self.children.keys()]
+        if temperature == 0:
+            action = actions[np.argmax(visit_counts)]
+        elif temperature == float("inf"):
+            action = np.random.choice(actions)
+        else:
+            # See paper appendix Data Generation
+            visit_count_distribution = visit_counts ** (1 / temperature)
+            visit_count_distribution = visit_count_distribution / sum(visit_count_distribution)
+            action = np.random.choice(actions, p=visit_count_distribution)
 
-    #             return action
+        return action
 
     def select_child(self):
         def ucb_score(parent, child):
             """
             The score for an action that would transition between the parent and child.
             """
-            prior_score = child.prior * math.sqrt(parent.visit_count) / (child.visit_count + 1)
+            prior_score = child.prior  * math.sqrt(parent.visit_count) / (child.visit_count + 1)
             if child.visit_count > 0:
                 # The value of the child is from the perspective of the opposing player
                 value_score = -child.value()
@@ -400,6 +400,8 @@ class NodeMCTS:
         #for action, child in self.children.items():
         for action, child in self.children.items():
             score = ucb_score(self, child)
+            if self.to_play == "Black":
+                score = score
             if score > best_score:
                 best_score = score
                 best_action = action
@@ -413,40 +415,38 @@ class NodeMCTS:
         """
         We expand a node and keep track of the prior policy probability given by neural network
         """
-        best = -1
         self.to_play = to_play
         #print(to_play)
 
-        board = deepcopy(self.board)
+        temp_board = deepcopy(self.board)
         #print(board.board)
         student_player.side = to_play
-        configurations = student_player.get_all_legal_moves(to_play, board)
+        configurations = student_player.get_all_legal_moves(to_play, temp_board)
         if self.to_play == "White":
             to_play = "Black"
         else:
             to_play = "White"
-            best = 100
         
         #print("configs: ", configurations, " ")
         move = []
         remove = []
         for i in range(len(configurations['move'])):
-            board = deepcopy(self.board)
+            temp_board = deepcopy(self.board)
             #print(configurations['board'])
             prob = model.predict(configurations['board'][i])
-           # print(prob)
-            board.board = student_player.performMove(configurations['move'][i], configurations['remove'][i], deepcopy(self.board))
-            board.increment_turn()
+           # print(prob)                
+            temp_board.board = student_player.performMove(configurations['move'][i], configurations['remove'][i], deepcopy(self.board))
+            temp_board.increment_turn()
             temp = ((configurations['move'][i][0][0], configurations['move'][i][0][1]), (configurations['move'][i][1][0],configurations['move'][i][1][1]))    
             
-            if self.to_play == "White" and prob[0] > best:
+            if self.to_play == "White":
             #    print("White has moved: ", board.board)
                 best = prob[0]  
-                self.children[temp] = NodeMCTS(prior=float(prob[0]), to_play=to_play,board=board)
-            elif self.to_play == "Black" and prob[0] < best:
+                self.children[temp] = NodeMCTS(prior=float(prob[0]), to_play=to_play,board=temp_board)
+            elif self.to_play == "Black":
             #    print("Black has moved: ", board.board)
                 best = prob[0]
-                self.children[temp] = NodeMCTS(prior=float(prob[0]), to_play=to_play,board=board)
+                self.children[temp] = NodeMCTS(prior=float(prob[0]), to_play=to_play,board=temp_board)
          
 
 
@@ -485,39 +485,53 @@ class MCTS:
 
         #Expand the root node
         root.expand( self.student_player, to_play, self.model)
+        
 
-        for _ in range(self.num_simulations):
+        for i in range(self.num_simulations):
+            print("\n\nsim: ", i)
             node = root
             search_path = [node]
-
+            value = 0
             # SELECT
+            print(node.to_play, "\n" , node.board.board)
             while node.expanded():
                 #print(node.board.board)
                 action, node = node.select_child()
+                print(node.to_play,"\n", node.board.board)
                 search_path.append(node)
            # print(node.board.board)
             
            # print("Search path:          ", search_path, "       End path")
-            parent = search_path[-2]
-            board = parent.board
+#             to_play = node.to_play
+            leaf = search_path[-1]
+            board = leaf.board
             # Now we're at a leaf node and we would like to expand
             # Players always play from their own perspective
 
 
             # The value of the new state from the perspective of the other player
+            moves = self.move_checker.get_all_legal_moves(deepcopy(board))
+            win = board.check_win(leaf.to_play, moves['move'])
+#             if win:
+#                 self.backpropagate(search_path, value, root.to_play)  
+#             if win is None:
+#                 # If the game has not ended:
+#                 # EXPAND
+#                 node.expand( self.student_player, node.to_play, self.model)
+#                 action, node = node.select_child()
+                
+#                 print("checking sim: ", i , node, " \n " , node.board.board, "\n")
+#                 #print(node.board.board)
+#                 search_path.append(node)
+#                 moves = self.move_checker.get_all_legal_moves(deepcopy(node.board))
+#                 win = board.check_win(node.to_play, moves['move']) #if win is true that means the node.to_play lost
 
-            win = board.check_win(parent.to_play, action)
-            if win is None:
-                # If the game has not ended:
-                # EXPAND
-                node.expand( self.student_player, node.to_play, self.model)
-                action, node = node.select_child()
-                #print(node.board.board)
-                search_path.append(node)
-                value = board.check_win(node.to_play, action)
+               # print(node.to_play)
+
                 
             to_play = node.to_play
             temp_board = deepcopy(node.board)
+            
             while win is None:
                # print(temp_board.board)
                 temp_board.increment_turn()
@@ -526,11 +540,13 @@ class MCTS:
                 moves = self.move_checker.get_all_legal_moves(deepcopy(temp_board))
                # print(moves)
                 win = temp_board.check_win(to_play, moves['move'])                  
-                if win is not None:
-                    if to_play == "White":
+                if win == True:
+                    if to_play == "White": # white lost
                         to_play = "Black"
+                        value = -1
                     else:
-                        to_play = "White"                                              
+                        to_play = "White" # white won
+                        value = 1
                     break
            
                 choice_idx = self.student_player.nextMove(deepcopy(temp_board))
@@ -541,10 +557,10 @@ class MCTS:
                     to_play = "White"   
 
                                                                                                          
-            
-            value = 1
+            #print(temp_board.board)
 
-            self.backpropagate(search_path, value, to_play)                   
+
+            self.backpropagate(search_path, value, root.to_play)                   
 
         return root
 
@@ -553,7 +569,7 @@ class MCTS:
         At the end of a simulation, we propagate the evaluation all the way up the tree
         to the root.
         """
-        print(search_path)
+        #print(search_path)
         for node in reversed(search_path):
             node.value_sum += value if node.to_play == to_play else -value
             node.visit_count += 1
