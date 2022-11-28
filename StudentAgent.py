@@ -35,12 +35,12 @@ class Student_Agent(object):
         self.model = NN()
         if version == 1:
             #23 was the last one without the noise
-            self.model.load_state_dict(torch.load('./THECNNSWAPFASTER177'))
+            self.model.load_state_dict(torch.load('./THECNNSWAPFASTER195'))
         elif version == 2:
             #4 was the last one without the noise
-            self.model.load_state_dict(torch.load('./THECNNSWAPFAST92'))
+            self.model.load_state_dict(torch.load('./THECNNSWAPFAST102'))
         else:
-            self.model.load_state_dict(torch.load('./THECNNSWAP15'))
+            self.model.load_state_dict(torch.load('./THECNNSWAP18'))
         self.board = None
 
     def get_valid_directions(self, start_pos, end_pos, promoted):
